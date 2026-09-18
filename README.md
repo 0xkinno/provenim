@@ -42,6 +42,8 @@ The customer still pays with Nimiq Pay. Provenim simply makes the merchant's mos
 |---|---|
 | Source | https://github.com/0xkinno/provenim |
 | Live app | https://provenim.vercel.app |
+| Live API (Render) | https://provenim-api.onrender.com |
+| API Health | https://provenim-api.onrender.com/api/health |
 | Nimiq Pay mini-app deep link | https://nimpay.app/miniapps/open/provenim.vercel.app |
 | Target Network | Nimiq PoS Testnet (`rpc.testnet.nimiqwatch.com`, ID: 5) |
 | Configured Merchant | `NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V` |
@@ -504,7 +506,7 @@ The live web application is continuously deployed on Vercel:
 Required frontend configuration:
 
 ```env
-VITE_API_BASE_URL=https://<render-api-domain>
+VITE_API_BASE_URL=https://provenim-api.onrender.com
 VITE_NIMIQ_NETWORK=testnet
 VITE_MERCHANT_DEFAULT_ADDRESS=NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V
 ```
@@ -515,11 +517,12 @@ Do not put API secrets, database credentials, private keys or signing material i
 
 The backend is a Fastify process with a real-time reconciliation loop, Nimiq PoS RPC connector, and deterministic receipt engine.
 
-Render Blueprint: `render.yaml`
+- **Live Render Web Service**: [https://provenim-api.onrender.com](https://provenim-api.onrender.com)
+- **Health Check Endpoint**: [https://provenim-api.onrender.com/api/health](https://provenim-api.onrender.com/api/health)
+- **Render Blueprint**: `render.yaml`
 
-CORS must allow the exact frontend origin (`https://provenim.vercel.app`), not `*` in production.
-
-The reconciler runs in the long-lived backend process, and database state survives restarts.
+CORS strictly allows the exact frontend origin (`https://provenim.vercel.app`).
+The reconciler runs continuously in the background on Render, verifying transactions against the Nimiq PoS history node.
 
 ---
 

@@ -1,6 +1,6 @@
 import { type Receipt, type VerificationVerdict } from '@provenim/shared';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://provenim-api.onrender.com' : 'http://localhost:3001');
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/api/health`);

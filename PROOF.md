@@ -16,6 +16,8 @@ Provenim proves:
 ## 2. Live Production URLs & Endpoints
 
 * **Live Frontend (Vercel)**: `https://provenim.vercel.app`
+* **Live API Backend (Render)**: `https://provenim-api.onrender.com`
+* **API Health Check**: `https://provenim-api.onrender.com/api/health`
 * **Target Network**: Nimiq PoS Testnet (`Network ID: 5` / `TestAlbatross`)
 * **Live History Node**: `https://rpc.testnet.nimiqwatch.com`
 * **Configured Merchant**: `NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V`

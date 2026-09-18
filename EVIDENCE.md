@@ -12,6 +12,8 @@ This document records the empirical blockchain evidence and network metrics capt
 * **Observed Head Block**: `11,752,274+`
 * **Mainnet Fallback Node**: `https://rpc.nimiqwatch.com` (`Network ID: 24` / `MainAlbatross`)
 * **Configured Merchant**: `NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V`
+* **Live API Backend (Render)**: `https://provenim-api.onrender.com`
+* **Backend Health Check**: `https://provenim-api.onrender.com/api/health`
 * **JSON-RPC Methods Tested**: `getBlockNumber`, `getBlockByNumber`, `getTransactionByHash`, `getTransactionsByAddress`, `getAccountByAddress`.
 
 ---

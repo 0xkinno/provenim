@@ -5,7 +5,23 @@ import { PaymentService } from '../src/service.js';
 describe('Payment API Service & Settlement Engine', () => {
   const service = new PaymentService();
   const sampleTxHash = '55aa49633c4a362699ef06c741e62c41581f34db761886ba0303dd29c6704379';
-  const merchantAddr = 'NQ26 0000 0000 02A5 YAK7 4QNF 9MH0 TE2B GVRU';
+  const merchantAddr = 'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V';
+
+  const makeTx = (intentId: string, memo: string, overrides = {}) => ({
+    hash: sampleTxHash,
+    from: 'NQ81 C01N BASE 0000 0000 0000 0000 0000 0000',
+    fromType: 0,
+    to: merchantAddr,
+    toType: 0,
+    value: 1801422,
+    executionResult: true,
+    networkId: 5,
+    network: 'TestAlbatross',
+    blockNumber: 11752000,
+    confirmations: 10,
+    recipientData: memo,
+    ...overrides
+  });
 
   beforeAll(() => {
     initDatabase();
@@ -20,12 +36,12 @@ describe('Payment API Service & Settlement Engine', () => {
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-API-1',
-      network: 'mainnet'
+      network: 'testnet'
     });
 
     expect(res.intent.intentId).toMatch(/^int_/);
     expect(res.intent.status).toBe('OPEN');
-    expect(res.memo).toContain('PRV1:');
+    expect(res.memo).toContain('PRV2:');
     expect(res.nimiqPayUri).toContain('nimiq:');
     expect(res.amountNim).toBe('18.01422');
 
@@ -34,19 +50,20 @@ describe('Payment API Service & Settlement Engine', () => {
     expect(fetched?.intent.intentId).toBe(res.intent.intentId);
   });
 
-  it('observes and verifies live transaction, sealing receipt', async () => {
-    const { intent } = service.createIntent({
-      amountLuna: '1801422', // exact Luna of sample tx
+  it('observes and verifies transaction, sealing receipt', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-LIVE-SEAL',
-      network: 'mainnet'
+      network: 'testnet'
     });
 
-    const result = await service.observeAndVerify(intent.intentId, sampleTxHash);
+    const mockTx = makeTx(intent.intentId, memo);
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, mockTx);
 
     expect(result.verdict).toBe('VERIFIED');
     expect(result.receipt).toBeDefined();
-    expect(result.receipt?.schema).toBe('provenim.receipt.v1');
+    expect(result.receipt?.schema).toBe('provenim.receipt');
     expect(result.receipt?.amountLuna).toBe('1801422');
     expect(result.receipt?.transactionHash).toBe(sampleTxHash);
     expect(result.receipt?.provenance.mode).toBe('DIRECT');
@@ -58,56 +75,59 @@ describe('Payment API Service & Settlement Engine', () => {
   });
 
   it('rejects replay of the same transaction hash on another intent (Attack 5)', async () => {
-    const { intent: firstIntent } = service.createIntent({
+    const { intent: firstIntent, memo: firstMemo } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-FIRST',
-      network: 'mainnet'
+      network: 'testnet'
     });
-    await service.observeAndVerify(firstIntent.intentId, sampleTxHash);
+    const tx1 = makeTx(firstIntent.intentId, firstMemo);
+    await service.observeAndVerify(firstIntent.intentId, sampleTxHash, false, tx1);
 
     // Attempt to settle a second intent with the identical transaction hash
-    const { intent: secondIntent } = service.createIntent({
+    const { intent: secondIntent, memo: secondMemo } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-REPLAY-ATTACK',
-      network: 'mainnet'
+      network: 'testnet'
     });
+    const tx2 = makeTx(secondIntent.intentId, secondMemo);
 
-    const replayResult = await service.observeAndVerify(secondIntent.intentId, sampleTxHash);
+    const replayResult = await service.observeAndVerify(secondIntent.intentId, sampleTxHash, false, tx2);
 
     expect(replayResult.verdict).toBe('REJECTED');
     expect(replayResult.failureReason).toContain('uniqueness');
-    expect(replayResult.invariants.P9.status).toBe('FAIL');
+    expect(replayResult.invariants.P10.status).toBe('FAIL');
 
     const intentStatus = service.getIntent(secondIntent.intentId);
     expect(intentStatus?.intent.status).toBe('REJECTED');
   });
 
   it('rejects wrong amount for intent (Attack 2)', async () => {
-    const secondRealTxHash = '6ed8a252afb15dc7987ebd0ea699ce09ce813f1acced7116e0ac25d8ecd43de7';
-    const { intent: wrongAmountIntent } = service.createIntent({
+    const { intent, memo } = service.createIntent({
       amountLuna: '999999999', // Claiming wrong Luna
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-WRONG-AMOUNT',
-      network: 'mainnet'
+      network: 'testnet'
     });
 
-    const result = await service.observeAndVerify(wrongAmountIntent.intentId, secondRealTxHash);
+    const wrongAmountTx = makeTx(intent.intentId, memo, { value: 1801422 });
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, wrongAmountTx);
 
     expect(result.verdict).toBe('REJECTED');
-    expect(result.invariants.P3.status).toBe('FAIL');
-    expect(result.failureReason).toContain('P3');
+    expect(result.invariants.P4.status).toBe('FAIL');
+    expect(result.failureReason).toContain('P4');
   });
 
   it('returns merchant settlement history', async () => {
-    const { intent } = service.createIntent({
+    const { intent, memo } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-HIST-1',
-      network: 'mainnet'
+      network: 'testnet'
     });
-    await service.observeAndVerify(intent.intentId, sampleTxHash);
+    const tx = makeTx(intent.intentId, memo);
+    await service.observeAndVerify(intent.intentId, sampleTxHash, false, tx);
 
     const history = service.getHistory(10);
     expect(Array.isArray(history)).toBe(true);

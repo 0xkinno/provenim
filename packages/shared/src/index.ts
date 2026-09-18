@@ -2,12 +2,12 @@ import { z } from 'zod';
 
 export const LUNA_PER_NIM = 100_000n;
 
-export const NETWORK_IDS = {
-  mainnet: 24,
-  testnet: 42
-} as const;
-
 export type NetworkName = 'mainnet' | 'testnet';
+
+export const NETWORK_IDS: Record<NetworkName, number[]> = {
+  mainnet: [24],
+  testnet: [5, 42]
+};
 
 export const NIMIQ_ADDRESS_REGEX = /^NQ\d{2}(\s?[A-Z0-9]{4}){8}$/i;
 
@@ -61,17 +61,19 @@ export const ProvenanceResultSchema = z.object({
 export type ProvenanceResult = z.infer<typeof ProvenanceResultSchema>;
 
 export const ReceiptSchema = z.object({
-  schema: z.literal('provenim.receipt.v1'),
+  schema: z.enum(['provenim.receipt', 'provenim.receipt.v1']).default('provenim.receipt'),
   receiptId: z.string(),
   intentId: z.string(),
   network: z.enum(['mainnet', 'testnet']),
   merchant: z.string(),
   amountLuna: z.string(),
+  paymentMemo: z.string().optional(),
   transactionHash: z.string(),
   blockHeight: z.number(),
   timestamp: z.number(),
+  settlementStatus: z.enum(['VERIFIED', 'FINAL', 'SETTLEMENT-READY']).optional(),
   finality: z.object({
-    status: z.enum(['CONFIRMED', 'FINAL']),
+    status: z.enum(['OBSERVED', 'INCLUDED', 'SETTLEMENT-READY', 'CONFIRMED', 'FINAL']),
     confirmations: z.number(),
     verifiedAtBlock: z.number()
   }),

@@ -62,9 +62,9 @@ describe('Payment Intent Canonicalization & Digests', () => {
 });
 
 describe('Transaction Memo', () => {
-  it('encodes and decodes PRV1 memo format', () => {
+  it('encodes and decodes PRV2 memo format', () => {
     const memo = generatePaymentMemo('int_abc', '1234567890abcdef');
-    expect(memo).toBe('PRV1:int_abc:12345678');
+    expect(memo).toBe('PRV2:int_abc:12345678');
 
     const parsed = parsePaymentMemo(memo);
     expect(parsed.valid).toBe(true);
@@ -72,8 +72,16 @@ describe('Transaction Memo', () => {
     expect(parsed.token).toBe('12345678');
   });
 
+  it('decodes legacy PRV1 memo format', () => {
+    const memo = 'PRV1:int_legacy:12345678';
+    const parsed = parsePaymentMemo(memo);
+    expect(parsed.valid).toBe(true);
+    expect(parsed.intentId).toBe('int_legacy');
+    expect(parsed.token).toBe('12345678');
+  });
+
   it('decodes hex-encoded memo safely', () => {
-    const hex = Buffer.from('PRV1:int_hex:abcdef01', 'utf8').toString('hex');
+    const hex = Buffer.from('PRV2:int_hex:abcdef01', 'utf8').toString('hex');
     const parsed = parsePaymentMemo(hex);
     expect(parsed.valid).toBe(true);
     expect(parsed.intentId).toBe('int_hex');
@@ -148,6 +156,7 @@ describe('Invariants Engine (P1-P14)', () => {
     network: 'mainnet',
     orderReference: 'ORDER-INV'
   });
+  const memo = generatePaymentMemo(intent.intentId, intent.intentDigest);
 
   const validTx: RawTransactionInput = {
     hash: '55aa49633c4a362699ef06c741e62c41581f34db761886ba0303dd29c6704379',
@@ -158,7 +167,8 @@ describe('Invariants Engine (P1-P14)', () => {
     value: 1801422,
     executionResult: true,
     networkId: 24,
-    blockNumber: 61861200
+    blockNumber: 61861200,
+    recipientData: memo
   };
 
   it('passes all invariants for valid transaction and confirmed block', () => {
@@ -174,7 +184,7 @@ describe('Invariants Engine (P1-P14)', () => {
     expect(res.failedInvariants).toHaveLength(0);
   });
 
-  it('rejects wrong amount (Invariant P3)', () => {
+  it('rejects wrong amount (Invariant P4)', () => {
     const wrongAmountTx = { ...validTx, value: 1801420 };
     const res = evaluatePaymentInvariants({
       intent,
@@ -184,10 +194,10 @@ describe('Invariants Engine (P1-P14)', () => {
 
     expect(res.allPassed).toBe(false);
     expect(res.verdict).toBe('REJECTED');
-    expect(res.failedInvariants).toContain('P3');
+    expect(res.failedInvariants).toContain('P4');
   });
 
-  it('rejects wrong recipient (Invariant P2)', () => {
+  it('rejects wrong recipient (Invariant P3)', () => {
     const wrongRecipientTx = { ...validTx, to: 'NQ00 0000 0000 0000 0000 0000 0000 0000 0000' };
     const res = evaluatePaymentInvariants({
       intent,
@@ -197,10 +207,10 @@ describe('Invariants Engine (P1-P14)', () => {
 
     expect(res.allPassed).toBe(false);
     expect(res.verdict).toBe('REJECTED');
-    expect(res.failedInvariants).toContain('P2');
+    expect(res.failedInvariants).toContain('P3');
   });
 
-  it('marks unconfirmed transaction as PENDING (Invariant P7)', () => {
+  it('marks unconfirmed transaction as PENDING (Invariant P8)', () => {
     const res = evaluatePaymentInvariants({
       intent,
       transaction: validTx,
@@ -210,9 +220,10 @@ describe('Invariants Engine (P1-P14)', () => {
 
     expect(res.allPassed).toBe(false);
     expect(res.verdict).toBe('PENDING');
+    expect(res.invariants.P8.status).toBe('PENDING');
   });
 
-  it('rejects duplicate settlement / replay (Invariant P8 & P9)', () => {
+  it('rejects duplicate settlement / replay (Invariant P10 & P11)', () => {
     const res = evaluatePaymentInvariants({
       intent,
       transaction: validTx,
@@ -222,6 +233,6 @@ describe('Invariants Engine (P1-P14)', () => {
 
     expect(res.allPassed).toBe(false);
     expect(res.verdict).toBe('REJECTED');
-    expect(res.failedInvariants).toContain('P8');
+    expect(res.failedInvariants).toContain('P11');
   });
 });

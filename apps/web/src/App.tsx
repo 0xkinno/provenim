@@ -23,13 +23,15 @@ export function App() {
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [sealedReceipt, setSealedReceipt] = useState<Receipt | null>(null);
 
-  const defaultMerchantAddress =
-    import.meta.env.VITE_MERCHANT_DEFAULT_ADDRESS || 'NQ26 0000 0000 02A5 YAK7 4QNF 9MH0 TE2B GVRU';
+  const [merchantAddress, setMerchantAddress] = useState<string>(
+    import.meta.env.VITE_MERCHANT_DEFAULT_ADDRESS || 'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V'
+  );
 
   useEffect(() => {
     fetchHealth()
       .then((h) => {
         if (h?.blockHeight) setBlockHeight(h.blockHeight);
+        if (h?.merchantAddress) setMerchantAddress(h.merchantAddress);
       })
       .catch(() => null);
 
@@ -37,6 +39,7 @@ export function App() {
       fetchHealth()
         .then((h) => {
           if (h?.blockHeight) setBlockHeight(h.blockHeight);
+          if (h?.merchantAddress) setMerchantAddress(h.merchantAddress);
         })
         .catch(() => null);
     }, 6000);
@@ -85,7 +88,7 @@ export function App() {
         {currentTab === 'create' && (
           <ScreenCreate
             onIntentCreated={handleIntentCreated}
-            defaultMerchantAddress={defaultMerchantAddress}
+            defaultMerchantAddress={merchantAddress}
           />
         )}
 
@@ -133,16 +136,16 @@ export function App() {
 
       {/* Luxury Editorial Footer */}
       <footer className="border-t border-parchment-200 bg-parchment-50/70 py-8 text-xs font-mono text-ink-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1">
             <span className="font-serif font-bold text-ink-900 text-sm">Provenim</span>
-            <span>•</span>
-            <span>Nimiq Mini Apps Competition — Cycle II</span>
+            <span className="text-ink-400">•</span>
+            <span className="text-ink-600">Nimiq Mini Apps Competition — Cycle II</span>
           </div>
 
-          <div className="flex items-center gap-6">
-            <span className="text-forest-800 font-semibold">Live PoS History Node: rpc.nimiqwatch.com</span>
-            <span>•</span>
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-x-2.5 gap-y-1 text-center md:text-right">
+            <span className="text-forest-800 font-semibold break-all sm:break-normal">Live PoS Testnet Node: rpc.testnet.nimiqwatch.com</span>
+            <span className="text-ink-400 hidden sm:inline">•</span>
             <span className="text-ink-600">Deterministic Invariants P1–P14</span>
           </div>
         </div>

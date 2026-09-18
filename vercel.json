@@ -1,0 +1,13 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "apps/web/dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "env": {
+    "VITE_NIMIQ_NETWORK": "testnet",
+    "VITE_MERCHANT_DEFAULT_ADDRESS": "NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V",
+    "VITE_DEFAULT_RPC_URL": "https://rpc.testnet.nimiqwatch.com"
+  }
+}

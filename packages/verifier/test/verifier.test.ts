@@ -12,7 +12,9 @@ describe('Standalone Deterministic Verifier', () => {
     value: 1801422,
     executionResult: true,
     networkId: 24,
-    blockNumber: 61861200
+    blockNumber: 61861200,
+    confirmations: 100,
+    recipientData: 'PRV2:int_test_v:12345678'
   };
 
   const receipt = sealReceipt({
@@ -31,7 +33,8 @@ describe('Standalone Deterministic Verifier', () => {
     payerEvidence: [],
     orderReference: 'ORDER-VERIFY-1',
     intentDigest: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    createdAt: '2026-09-17T20:00:00.000Z'
+    createdAt: '2026-09-17T20:00:00.000Z',
+    paymentMemo: 'PRV2:int_test_v:12345678'
   });
 
   it('independently verifies a genuine receipt against raw tx evidence', async () => {
@@ -43,9 +46,10 @@ describe('Standalone Deterministic Verifier', () => {
     expect(verdict.verdict).toBe('VERIFIED');
     expect(verdict.receiptDigestMatch).toBe(true);
     expect(verdict.transactionFound).toBe(true);
-    expect(verdict.invariants.P11.status).toBe('PASS');
     expect(verdict.invariants.P2.status).toBe('PASS');
     expect(verdict.invariants.P3.status).toBe('PASS');
+    expect(verdict.invariants.P4.status).toBe('PASS');
+    expect(verdict.invariants.P12.status).toBe('PASS');
   });
 
   it('rejects a receipt with a tampered digest (Attack 4)', async () => {
@@ -61,7 +65,7 @@ describe('Standalone Deterministic Verifier', () => {
 
     expect(verdict.verdict).toBe('REJECTED');
     expect(verdict.receiptDigestMatch).toBe(false);
-    expect(verdict.invariants.P11.status).toBe('FAIL');
+    expect(verdict.invariants.P12.status).toBe('FAIL');
     expect(verdict.failureReason).toContain('tampered');
   });
 
@@ -92,7 +96,7 @@ describe('Standalone Deterministic Verifier', () => {
 
     expect(verdict.verdict).toBe('REJECTED');
     expect(verdict.receiptDigestMatch).toBe(true);
-    expect(verdict.invariants.P3.status).toBe('FAIL');
+    expect(verdict.invariants.P4.status).toBe('FAIL');
     expect(verdict.failureReason).toContain('Amount mismatch');
   });
 });

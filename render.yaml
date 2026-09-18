@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: provenim-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm --workspace=@provenim/api run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: NIMIQ_NETWORK
+        value: testnet
+      - key: NIMIQ_RPC_URL
+        value: https://rpc.testnet.nimiqwatch.com
+      - key: MERCHANT_ADDRESS
+        value: NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V
+      - key: FINALITY_CONFIRMATION_THRESHOLD
+        value: 1

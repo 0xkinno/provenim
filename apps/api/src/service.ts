@@ -2,12 +2,12 @@ import crypto from 'node:crypto';
 import {
   type PaymentIntent,
   type Receipt,
-  type VerificationVerdict,
   normalizeNimiqAddress
 } from '@provenim/shared';
 import {
   createPaymentIntent,
   generatePaymentMemo,
+  parsePaymentMemo,
   evaluatePaymentInvariants,
   classifyPaymentProvenance,
   sealReceipt,
@@ -20,18 +20,23 @@ import { rpcClient } from './rpc.js';
 export class PaymentService {
   createIntent(params: {
     amountLuna: string;
-    merchantAddress: string;
+    merchantAddress?: string;
     orderReference: string;
     network?: 'mainnet' | 'testnet';
     merchantId?: string;
     expiresInSeconds?: number;
   }) {
     const intentId = 'int_' + crypto.randomBytes(8).toString('hex');
-    const network = params.network || (process.env.NIMIQ_NETWORK as any) || 'mainnet';
+    const network = params.network || (process.env.NIMIQ_NETWORK as any) || 'testnet';
+    // Server strictly owns and locks merchant settlement destination
+    const merchantAddress =
+      process.env.MERCHANT_ADDRESS ||
+      params.merchantAddress ||
+      'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V';
 
     const intent = createPaymentIntent({
       intentId,
-      merchantAddress: params.merchantAddress,
+      merchantAddress,
       amountLuna: params.amountLuna,
       network,
       orderReference: params.orderReference,
@@ -106,29 +111,38 @@ export class PaymentService {
       status: intentRow.status
     };
 
+    const memo = generatePaymentMemo(intent.intentId, intent.intentDigest);
+    const amountNim = lunaToNimString(intent.amountLuna);
+    const nimiqPayUri = `nimiq:${intent.merchantAddress.replace(/\s+/g, '')}?amount=${amountNim}&message=${encodeURIComponent(memo)}`;
+
     return {
       intent,
       settlement: settlementRow || null,
       receipt,
-      observations
+      observations,
+      memo,
+      amountNim,
+      nimiqPayUri
     };
   }
 
-  async observeAndVerify(intentId: string, txHash: string, traceId = crypto.randomUUID()): Promise<{
-    verdict: 'VERIFIED' | 'REJECTED' | 'PENDING';
-    receipt?: Receipt;
-    invariants: any;
-    failureReason?: string;
-  }> {
-    const cleanHash = txHash.trim().toLowerCase();
+  async observeAndVerify(
+    intentId: string,
+    txHash: string,
+    allowLegacyBypass = false,
+    injectedTx?: RawTransactionInput
+  ) {
+    const traceId = 'trc_' + crypto.randomBytes(6).toString('hex');
     const intentData = this.getIntent(intentId);
+
     if (!intentData) {
-      throw new Error(`Intent ${intentId} not found`);
+      throw new Error(`Intent not found: ${intentId}`);
     }
 
     const { intent } = intentData;
+    const cleanHash = txHash.trim().toLowerCase();
 
-    // Record observation if not recorded yet
+    // Record observation in database
     const existingObs = db.prepare(
       'SELECT id FROM payment_observations WHERE intent_id = ? AND transaction_hash = ?'
     ).get(intentId, cleanHash);
@@ -150,7 +164,7 @@ export class PaymentService {
       };
     }
 
-    // Check if tx hash is already used for another intent
+    // Check if tx hash is already used for another intent (Replay Protection)
     const existingTxSettlement = db.prepare(
       'SELECT intent_id FROM settlements WHERE transaction_hash = ? AND intent_id != ?'
     ).get(cleanHash, intentId) as any;
@@ -160,8 +174,8 @@ export class PaymentService {
       return {
         verdict: 'REJECTED',
         invariants: {
-          P9: {
-            code: 'P9',
+          P10: {
+            code: 'P10',
             name: 'Transaction uniqueness',
             status: 'FAIL',
             message: `Transaction ${cleanHash} was already used to settle intent ${existingTxSettlement.intent_id}`
@@ -171,39 +185,46 @@ export class PaymentService {
       };
     }
 
-    // Fetch transaction directly from Nimiq RPC history node
-    let tx: RawTransactionInput | null = null;
-    try {
-      tx = await rpcClient.getTransactionByHash(cleanHash);
-    } catch (err: any) {
-      return {
-        verdict: 'REJECTED',
-        invariants: {
-          RPC: { code: 'RPC', name: 'RPC transaction retrieval', status: 'FAIL', message: err.message }
-        },
-        failureReason: `Could not retrieve transaction from blockchain: ${err.message}`
-      };
+    // Fetch transaction directly from Nimiq RPC history node or injected for deterministic testing
+    let tx: RawTransactionInput | null = injectedTx || null;
+    if (!tx) {
+      try {
+        tx = await rpcClient.getTransactionByHash(cleanHash);
+      } catch (err: any) {
+        return {
+          verdict: 'REJECTED',
+          invariants: {
+            RPC: { code: 'RPC', name: 'RPC transaction retrieval', status: 'FAIL', message: err.message }
+          },
+          failureReason: `Could not retrieve transaction from blockchain: ${err.message}`
+        };
+      }
     }
 
     if (!tx) {
       return {
         verdict: 'PENDING',
         invariants: {
-          P1: { code: 'P1', name: 'Transaction broadcast', status: 'PENDING', message: 'Transaction not found on chain yet' }
+          P7: { code: 'P7', name: 'Block inclusion', status: 'PENDING', message: 'Transaction not found on chain yet' }
         },
         failureReason: 'Transaction not found on history node yet. Awaiting chain inclusion.'
       };
     }
 
-    // Calculate confirmations
-    let confirmations = (tx as any).confirmations || 0;
-    if (tx.blockNumber) {
+    // Calculate confirmations using live head block height from RPC
+    let confirmations = (tx as any).confirmations !== undefined ? (tx as any).confirmations : 0;
+    let headBlock = 0;
+    if (!injectedTx) {
       try {
-        const head = await rpcClient.getBlockNumber();
-        confirmations = Math.max(confirmations, head - tx.blockNumber + 1);
+        headBlock = await rpcClient.getBlockNumber();
+        if (tx.blockNumber && headBlock >= tx.blockNumber) {
+          confirmations = headBlock - tx.blockNumber + 1;
+        }
       } catch {
-        // use tx.confirmations
+        // fallback to tx confirmations if getBlockNumber fails
       }
+    } else if (tx.blockNumber) {
+      headBlock = tx.blockNumber + (confirmations > 0 ? confirmations - 1 : 0);
     }
 
     const evalResult = evaluatePaymentInvariants({
@@ -212,7 +233,8 @@ export class PaymentService {
       confirmations,
       finalityThreshold: parseInt(process.env.FINALITY_CONFIRMATION_THRESHOLD || '1', 10),
       existingSettlementForIntent: false,
-      existingSettlementForTx: false
+      existingSettlementForTx: false,
+      allowLegacyDirectFixture: allowLegacyBypass
     });
 
     // Record verification attempt in database for audit trail
@@ -233,7 +255,8 @@ export class PaymentService {
     if (evalResult.verdict === 'VERIFIED') {
       const provenance = classifyPaymentProvenance(tx, intent.intentId, intent.intentDigest);
       const receiptId = 'PRV-' + crypto.randomBytes(6).toString('hex').toUpperCase();
-      const nowBlock = tx.blockNumber ? tx.blockNumber + confirmations : 0;
+      const verifiedAtBlock = headBlock > 0 ? headBlock : (tx.blockNumber || 0);
+      const memoText = tx.recipientData || tx.senderData || '';
 
       const receipt = sealReceipt({
         receiptId,
@@ -241,19 +264,21 @@ export class PaymentService {
         network: intent.network,
         merchant: intent.merchantAddress,
         amountLuna: intent.amountLuna,
+        paymentMemo: memoText,
         transactionHash: cleanHash,
         blockHeight: tx.blockNumber || 0,
         timestamp: (tx as any).timestamp || Date.now(),
         confirmations,
-        verifiedAtBlock: nowBlock,
+        verifiedAtBlock,
         provenanceMode: provenance.mode,
         payer: provenance.payer || tx.from,
         payerEvidence: provenance.payerEvidence,
         orderReference: intent.orderReference,
-        intentDigest: intent.intentDigest
+        intentDigest: intent.intentDigest,
+        schemaVersion: 'provenim.receipt'
       });
 
-      // Atomic settlement write
+      // Atomic settlement write with unique database constraints
       db.exec('BEGIN IMMEDIATE;');
       try {
         db.prepare(`
@@ -342,13 +367,14 @@ export class PaymentService {
       }
 
       // Crash Recovery: No client callback received! Check merchant address history on chain
+      // SAFETY: Never match by amount alone. Require exact memo intent ID binding.
       try {
         const txs = await rpcClient.getTransactionsByAddress(intentRow.merchant_address, 10, null);
         for (const tx of txs) {
-          // Check if transaction matches intent memo or amount
           const memoText = tx.recipientData || tx.senderData || '';
-          if (memoText.includes(intentRow.intent_id) || BigInt(tx.value) === BigInt(intentRow.amount_luna)) {
-            // Found unconfirmed transaction!
+          const parsed = parsePaymentMemo(memoText);
+          if (parsed.valid && parsed.intentId === intentRow.intent_id) {
+            // Found exact payment transaction matching intent binding!
             await this.observeAndVerify(intentRow.intent_id, tx.hash);
             break;
           }
@@ -370,7 +396,8 @@ export class PaymentService {
       LEFT JOIN receipts r ON pi.intent_id = r.intent_id
       ORDER BY pi.created_at DESC
       LIMIT ?
-    `).all(limit);
+    `).all(limit) as any[];
+
     return rows;
   }
 }

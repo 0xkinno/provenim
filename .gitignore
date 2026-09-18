@@ -10,8 +10,12 @@ build/
 .env.*.local
 *.secrets.*
 
-# Research and temporary
-research/competitors/
+# Reference and internal task tracking
+reference/
+
+# Research, specimen, and temporary
+research/specimen/
+research/test/
 research/raw/
 
 # Logs and coverage
@@ -42,3 +46,5 @@ playwright/.cache/
 *.db
 *.db-shm
 *.db-wal
+
+.vercel

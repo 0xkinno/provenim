@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Copy,
   Check,
   ExternalLink,
-  ShieldCheck,
-  AlertCircle,
+  ShieldAlert,
+  ArrowRight,
   RefreshCw,
   Wallet,
-  ArrowRight,
-  Sparkles
+  Coins,
+  QrCode,
+  AlertCircle
 } from 'lucide-react';
 import { type UseNimiqReturn } from '../hooks/useNimiq';
-import { observeTransactionApi, fetchIntentApi } from '../api';
+import { observeTransactionApi } from '../api';
+import { lunaToNimString } from '@provenim/domain';
 
 interface ScreenPaymentProps {
   intentData: {
@@ -33,53 +35,32 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
   onCancel
 }) => {
   const { intent, memo, nimiqPayUri, amountNim } = intentData;
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [copiedMemo, setCopiedMemo] = useState(false);
+  const [copiedAddr, setCopiedAddr] = useState(false);
   const [customTxHash, setCustomTxHash] = useState('');
   const [payingWithSdk, setPayingWithSdk] = useState(false);
-  const [isPolling, setIsPolling] = useState(true);
   const [pollError, setPollError] = useState<string | null>(null);
 
-  // Copy helper
-  const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
+  const handleCopyMemo = () => {
+    navigator.clipboard.writeText(memo);
+    setCopiedMemo(true);
+    setTimeout(() => setCopiedMemo(false), 2000);
   };
 
-  // Background polling for intent updates (e.g. if paid via mobile or background reconciler)
-  useEffect(() => {
-    let active = true;
-    const interval = setInterval(async () => {
-      if (!isPolling) return;
-      try {
-        const latest = await fetchIntentApi(intent.intentId);
-        if (latest && latest.receipt && active) {
-          setIsPolling(false);
-          onPaymentObserved(latest.settlement?.transaction_hash || latest.receipt.transactionHash, {
-            verdict: 'VERIFIED',
-            receipt: latest.receipt
-          });
-        }
-      } catch (err: any) {
-        // quiet poll
-      }
-    }, 3000);
+  const handleCopyAddress = () => {
+    navigator.clipboard.writeText(intent.merchantAddress);
+    setCopiedAddr(true);
+    setTimeout(() => setCopiedAddr(false), 2000);
+  };
 
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [intent.intentId, isPolling, onPaymentObserved]);
-
-  // Handle Nimiq Pay Native Wallet Interaction
-  const handleNimiqPayClick = async () => {
+  // 1-Tap Payment via Nimiq Pay Provider
+  const handlePayWithNimiqPay = async () => {
     setPayingWithSdk(true);
     setPollError(null);
     try {
       const lunaNum = Number(intent.amountLuna);
       const txHash = await nimiq.sendPayment(intent.merchantAddress, lunaNum, memo);
       if (txHash) {
-        // Immediately submit to Provenim API for invariant verification
         const result = await observeTransactionApi(intent.intentId, txHash);
         onPaymentObserved(txHash, result);
       }
@@ -90,7 +71,7 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
     }
   };
 
-  // Manual Transaction Hash submit (for desktop / external wallet evaluation)
+  // Manual Transaction Hash submission
   const handleManualHashSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTxHash.trim()) return;
@@ -106,14 +87,9 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
     }
   };
 
-  // Quick helper to populate sample real mainnet tx for evaluation
-  const loadRealEvidenceTx = () => {
-    setCustomTxHash('55aa49633c4a362699ef06c741e62c41581f34db761886ba0303dd29c6704379');
-  };
-
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 sm:px-6">
-      <div className="paper-card-elevated rounded-2xl overflow-hidden relative border border-parchment-300">
+      <div className="paper-card-elevated rounded-2xl overflow-hidden relative border border-parchment-300 card-hover-glow transition-all">
         
         {/* Header Ribbon */}
         <div className="bg-forest-800 text-parchment-50 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -138,31 +114,37 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 sm:p-8 space-y-8 bg-parchment-50 relative">
+        <div className="p-6 sm:p-8 space-y-6">
           {pollError && (
-            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{pollError}</span>
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold font-mono">Payment Error:</span> {pollError}
+              </div>
             </div>
           )}
 
-          {/* Primary Action: Nimiq Pay Native Button (If running inside Nimiq Pay or SDK ready) */}
+          {/* If running inside Nimiq Pay: Show One-Tap Button */}
           {nimiq.isNimiqPay ? (
-            <div className="p-5 rounded-2xl bg-forest-800/5 border border-forest-800/20 text-center space-y-3">
-              <div className="text-xs font-mono text-forest-800 font-semibold uppercase tracking-wider flex items-center justify-center gap-1.5">
-                <Wallet className="w-4 h-4 text-forest-700" />
-                <span>Nimiq Pay Wallet Detected</span>
+            <div className="p-6 rounded-2xl bg-forest-800/5 border border-forest-800/20 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-forest-800 text-parchment-50 mx-auto flex items-center justify-center shadow-md">
+                <Wallet className="w-6 h-6 text-gold-light" />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-ink-900">
+                  Nimiq Pay Provider Detected
+                </h3>
+                <p className="text-xs text-ink-600 max-w-sm mx-auto mt-1">
+                  Approve this transaction directly inside your connected wallet with exact memo binding.
+                </p>
               </div>
               <button
-                onClick={handleNimiqPayClick}
+                onClick={handlePayWithNimiqPay}
                 disabled={payingWithSdk}
-                className="w-full inline-flex items-center justify-center gap-2.5 bg-forest-800 hover:bg-forest-900 text-parchment-50 py-3.5 px-6 rounded-xl font-medium text-base shadow-md transition-all active:scale-[0.99] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 bg-forest-800 hover:bg-forest-900 text-parchment-50 px-8 py-3.5 rounded-full text-sm font-medium shadow-md transition-all active:scale-95 disabled:opacity-50"
               >
                 {payingWithSdk ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-gold-light" />
-                    <span>Confirming in Nimiq Pay...</span>
-                  </>
+                  <span>Awaiting Wallet Approval...</span>
                 ) : (
                   <>
                     <span>Pay {amountNim} NIM with Nimiq Pay</span>
@@ -172,70 +154,66 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
               </button>
             </div>
           ) : (
-            /* Standard Browser / Mobile QR Flow */
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-8 items-center">
-              {/* QR Code Container */}
-              <div className="sm:col-span-5 flex flex-col items-center justify-center p-4 rounded-xl bg-parchment-100 border border-parchment-200">
-                <div className="bg-white p-3 rounded-lg shadow-sm">
-                  <QRCodeSVG
-                    value={nimiqPayUri}
-                    size={160}
-                    level="M"
-                    includeMargin={false}
-                  />
-                </div>
-                <div className="text-[10px] font-mono text-ink-500 mt-2 text-center">
-                  Scan with Nimiq Pay or Nimiq Wallet
-                </div>
+            /* Outside Nimiq Pay: Show Payment QR Code & Instructions */
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              {/* Payment QR Code */}
+              <div className="md:col-span-5 flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-parchment-300 shadow-sm">
+                <QRCodeSVG
+                  value={nimiqPayUri}
+                  size={180}
+                  level="M"
+                  includeMargin={true}
+                  className="rounded-lg"
+                />
+                <span className="text-[10px] font-mono uppercase text-ink-500 mt-2 font-medium">
+                  Scan to Pay in Nimiq Pay
+                </span>
               </div>
 
-              {/* Payment Details & Links */}
-              <div className="sm:col-span-7 space-y-4">
-                {/* Recipient Address */}
+              {/* Order Parameters */}
+              <div className="md:col-span-7 space-y-4">
+                {/* Merchant Address */}
                 <div className="space-y-1">
-                  <div className="text-[11px] font-mono text-ink-500 uppercase tracking-wider">Merchant Address</div>
-                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-parchment-100 border border-parchment-200">
-                    <span className="font-mono text-xs text-ink-900 truncate mr-2">
-                      {intent.merchantAddress}
-                    </span>
+                  <span className="text-[10px] font-mono uppercase text-ink-500 font-semibold block">
+                    Merchant Address
+                  </span>
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-parchment-50 border border-parchment-200 text-xs font-mono text-ink-900">
+                    <span className="truncate pr-2">{intent.merchantAddress}</span>
                     <button
-                      onClick={() => copyToClipboard(intent.merchantAddress, 'addr')}
-                      className="p-1 hover:bg-parchment-200 rounded text-ink-600 transition-colors"
-                      title="Copy Address"
+                      onClick={handleCopyAddress}
+                      className="text-forest-800 hover:text-forest-900 p-1 shrink-0"
                     >
-                      {copiedField === 'addr' ? <Check className="w-3.5 h-3.5 text-forest-700" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedAddr ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
 
-                {/* Intent PRV1 Memo */}
+                {/* Required Memo Token */}
                 <div className="space-y-1">
-                  <div className="text-[11px] font-mono text-ink-500 uppercase tracking-wider">
-                    Transaction Memo (Required for Intent Binding)
-                  </div>
-                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-parchment-100 border border-parchment-200">
-                    <span className="font-mono text-xs font-bold text-forest-800 truncate mr-2">
-                      {memo}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-ink-500 font-semibold">
+                      Transaction Memo (PRV2 Token)
                     </span>
+                    <span className="text-[10px] font-mono text-forest-800 font-bold">MANDATORY</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-forest-800/5 border border-forest-800/20 text-xs font-mono text-forest-900 font-bold">
+                    <span className="truncate pr-2">{memo}</span>
                     <button
-                      onClick={() => copyToClipboard(memo, 'memo')}
-                      className="p-1 hover:bg-parchment-200 rounded text-ink-600 transition-colors"
-                      title="Copy Memo"
+                      onClick={handleCopyMemo}
+                      className="text-forest-800 hover:text-forest-900 p-1 shrink-0"
                     >
-                      {copiedField === 'memo' ? <Check className="w-3.5 h-3.5 text-forest-700" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedMemo ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
 
-                {/* Open in Nimiq Wallet Link */}
-                <div>
+                {/* Nimiq Pay Deep Link URI */}
+                <div className="pt-1">
                   <a
                     href={nimiqPayUri}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-forest-800 hover:text-forest-900 underline underline-offset-4"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-forest-800 hover:underline"
                   >
-                    <span>Open in Nimiq Wallet / Pay link</span>
+                    <span>Launch Nimiq Pay App via URI</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
@@ -243,20 +221,15 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
             </div>
           )}
 
-          {/* Manual Observation / Real Evidence Input Form */}
+          {/* Manual Observation Input Form */}
           <div className="pt-4 border-t border-parchment-200 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono uppercase tracking-wider text-ink-600 font-semibold">
-                Submit Transaction Hash
+                Observe Transaction Hash
               </span>
-              <button
-                type="button"
-                onClick={loadRealEvidenceTx}
-                className="text-[11px] font-mono text-forest-800 hover:underline flex items-center gap-1"
-              >
-                <Sparkles className="w-3 h-3 text-gold" />
-                <span>Use Block 61861200 Real Tx</span>
-              </button>
+              <span className="text-[11px] font-mono text-ink-500">
+                Paste hash from wallet
+              </span>
             </div>
 
             <form onSubmit={handleManualHashSubmit} className="flex gap-2">
@@ -265,7 +238,7 @@ export const ScreenPayment: React.FC<ScreenPaymentProps> = ({
                 value={customTxHash}
                 onChange={(e) => setCustomTxHash(e.target.value)}
                 placeholder="Paste Nimiq tx hash (e.g. 55aa49633c...)"
-                className="flex-1 bg-parchment-100 border border-parchment-300 focus:border-forest-700 focus:ring-1 focus:ring-forest-700 rounded-xl px-3 py-2 text-xs font-mono text-ink-900 outline-none"
+                className="flex-1 bg-parchment-50 border border-parchment-300 focus:border-forest-700 focus:ring-1 focus:ring-forest-700 rounded-xl px-3 py-2 text-xs font-mono text-ink-900 outline-none"
               />
               <button
                 type="submit"

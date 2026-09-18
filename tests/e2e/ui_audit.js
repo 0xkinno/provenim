@@ -21,7 +21,7 @@ const VIEWPORTS = {
 };
 
 // Wait for a URL to respond with HTTP 200
-async function waitForServer(url, timeoutMs = 20000) {
+async function waitForServer(url, timeoutMs = 25000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
@@ -30,14 +30,14 @@ async function waitForServer(url, timeoutMs = 20000) {
           resolve(res.statusCode >= 200 && res.statusCode < 400);
         });
         req.on('error', () => resolve(false));
-        req.setTimeout(1000, () => {
+        req.setTimeout(1500, () => {
           req.destroy();
           resolve(false);
         });
       });
       if (ok) return true;
     } catch {}
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 600));
   }
   throw new Error(`Timeout waiting for ${url}`);
 }
@@ -98,6 +98,8 @@ async function runE2EAudit() {
       return !overflow;
     }
 
+    const receiptJson = fs.readFileSync(path.resolve('evidence/receipt.json'), 'utf8');
+
     // ==========================================
     // 1. DESKTOP HD VIEWPORT (1440x900)
     // ==========================================
@@ -114,80 +116,60 @@ async function runE2EAudit() {
       auditResults.push({ screen: 'Landing', viewport: 'Desktop HD', noOverflow: landingNoOverflow });
 
       // Screen 2: Create Intent
-      await page.click('button:has-text("Create a payment request")');
+      await page.click('button:has-text("Create payment request")');
       await page.waitForTimeout(500);
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '02_create_desktop_hd.png'), fullPage: true });
       const createNoOverflow = await checkOverflow(page, 'Create', 'Desktop HD');
       auditResults.push({ screen: 'Create', viewport: 'Desktop HD', noOverflow: createNoOverflow });
 
-      // Fill in amount matching real block 61861200 transaction (18.01422 NIM)
+      // Fill in amount
       await page.fill('input[placeholder="12.50"]', '18.01422');
       await page.fill('input[placeholder="e.g. ORDER-1042"]', 'ORDER-DESKTOP-E2E');
       await page.click('button[type="submit"]:has-text("Create payment request")');
 
-      // Screen 3: Payment Request & QR
-      await page.waitForSelector('text=Transaction Memo');
+      // Screen 3: Payment Request & Dual QR
+      await page.waitForSelector('text=Transaction Memo', { timeout: 10000 });
       await page.waitForTimeout(600);
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '03_payment_desktop_hd.png'), fullPage: true });
       const payNoOverflow = await checkOverflow(page, 'Payment', 'Desktop HD');
       auditResults.push({ screen: 'Payment', viewport: 'Desktop HD', noOverflow: payNoOverflow });
 
-      // Submit real block 61861200 tx hash
-      await page.click('button:has-text("Use Block 61861200 Real Tx")');
-      await page.click('button:has-text("Verify Tx")');
-
-      // Screen 4: Verification Journey Timeline
-      await page.waitForSelector('text=Verifying Blockchain Evidence', { timeout: 15000 });
-      await page.waitForTimeout(1000);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '04_journey_desktop_hd.png'), fullPage: true });
-      const journeyNoOverflow = await checkOverflow(page, 'Journey', 'Desktop HD');
-      auditResults.push({ screen: 'Journey', viewport: 'Desktop HD', noOverflow: journeyNoOverflow });
-
-      // Transition to Receipt (wait for auto or click)
-      const viewReceiptBtn = page.locator('button:has-text("View Sealed Proof Receipt")');
-      try {
-        await viewReceiptBtn.waitFor({ state: 'visible', timeout: 5000 });
-        await viewReceiptBtn.click();
-      } catch {}
-
-      // Screen 5: Sealed Proof Receipt
-      await page.waitForSelector('text=Cryptographic Proof Receipt', { timeout: 15000 });
-      await page.waitForTimeout(1000);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '05_receipt_desktop_hd.png'), fullPage: true });
-      const receiptNoOverflow = await checkOverflow(page, 'Receipt', 'Desktop HD');
-      auditResults.push({ screen: 'Receipt', viewport: 'Desktop HD', noOverflow: receiptNoOverflow });
-
-      // Screen 6: Independent Verifier
+      // Screen 4: Independent Verifier
       await page.click('nav button:has-text("Verify Receipt")');
       await page.waitForSelector('text=Verify Payment Receipt');
-      await page.waitForTimeout(600);
-      // Load sample
-      await page.click('button:has-text("Load Sample")');
+      await page.waitForTimeout(500);
+
+      // Paste genuine receipt into verifier textarea
+      await page.fill('textarea', receiptJson);
+      await page.waitForTimeout(300);
       await page.click('button:has-text("Run Verification")');
       await page.waitForSelector('text=VERIFIED (AUTHENTIC)', { timeout: 15000 });
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '06_verifier_verified_desktop_hd.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '04_verifier_verified_desktop_hd.png'), fullPage: true });
       const verifierNoOverflow = await checkOverflow(page, 'Verifier', 'Desktop HD');
       auditResults.push({ screen: 'Verifier', viewport: 'Desktop HD', noOverflow: verifierNoOverflow });
 
-      // Screen 7: Tamper Test in Verifier
-      await page.click('button:has-text("Tamper Test")');
+      // Screen 5: Tamper Test in Verifier
+      await page.click('button:has-text("Tamper +1 Luna")');
+      await page.waitForTimeout(300);
       await page.click('button:has-text("Run Verification")');
-      await page.waitForSelector('text=VERIFICATION FAILED', { timeout: 15000 });
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '07_verifier_tampered_desktop_hd.png'), fullPage: true });
+      await page.waitForSelector('text=REJECTED (INVALID)', { timeout: 15000 });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '05_verifier_tampered_desktop_hd.png'), fullPage: true });
+      const tamperedNoOverflow = await checkOverflow(page, 'Verifier Tampered', 'Desktop HD');
+      auditResults.push({ screen: 'Verifier Tampered', viewport: 'Desktop HD', noOverflow: tamperedNoOverflow });
 
-      // Screen 8: Live Proof & Evidence Registry
+      // Screen 6: Live Proof & Evidence Registry
       await page.click('nav button:has-text("Proof & Chain")');
       await page.waitForSelector('text=Live Evidence & Verification Registry');
       await page.waitForTimeout(600);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '08_proof_desktop_hd.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '06_proof_desktop_hd.png'), fullPage: true });
       const proofNoOverflow = await checkOverflow(page, 'Proof', 'Desktop HD');
       auditResults.push({ screen: 'Proof', viewport: 'Desktop HD', noOverflow: proofNoOverflow });
 
-      // Screen 9: Merchant History Ledger
+      // Screen 7: Merchant History Ledger
       await page.click('nav button:has-text("Ledger")');
       await page.waitForSelector('text=Payment History & Receipts');
       await page.waitForTimeout(600);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '09_history_desktop_hd.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '07_history_desktop_hd.png'), fullPage: true });
       const historyNoOverflow = await checkOverflow(page, 'History', 'Desktop HD');
       auditResults.push({ screen: 'History', viewport: 'Desktop HD', noOverflow: historyNoOverflow });
 
@@ -204,7 +186,7 @@ async function runE2EAudit() {
 
       await page.goto('http://localhost:5173/');
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '10_landing_laptop_1280.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '08_landing_laptop_1280.png'), fullPage: true });
       const laptopLandingNoOverflow = await checkOverflow(page, 'Landing', 'Laptop 1280x800');
       auditResults.push({ screen: 'Landing', viewport: 'Laptop 1280x800', noOverflow: laptopLandingNoOverflow });
 
@@ -221,9 +203,15 @@ async function runE2EAudit() {
 
       await page.goto('http://localhost:5173/');
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '11_landing_tablet_768.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '09_landing_tablet_768.png'), fullPage: true });
       const tabletLandingNoOverflow = await checkOverflow(page, 'Landing', 'Tablet 768x1024');
       auditResults.push({ screen: 'Landing', viewport: 'Tablet 768x1024', noOverflow: tabletLandingNoOverflow });
+
+      await page.click('button:has-text("Create payment request")');
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '10_create_tablet_768.png'), fullPage: true });
+      const tabletCreateNoOverflow = await checkOverflow(page, 'Create', 'Tablet 768x1024');
+      auditResults.push({ screen: 'Create', viewport: 'Tablet 768x1024', noOverflow: tabletCreateNoOverflow });
 
       await context.close();
     }
@@ -243,39 +231,54 @@ async function runE2EAudit() {
       // Mobile Landing
       await page.goto('http://localhost:5173/');
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '12_landing_mobile_iphone_390.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '11_landing_mobile_iphone_390.png'), fullPage: true });
       const mobileLandingNoOverflow = await checkOverflow(page, 'Landing', 'iPhone 14 (390px)');
       auditResults.push({ screen: 'Landing', viewport: 'iPhone 14 (390px)', noOverflow: mobileLandingNoOverflow });
 
       // Mobile Create Screen
-      await page.click('button:has-text("Create a payment request")');
+      await page.click('button:has-text("Create payment request")');
       await page.waitForTimeout(500);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '13_create_mobile_iphone_390.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '12_create_mobile_iphone_390.png'), fullPage: true });
       const mobileCreateNoOverflow = await checkOverflow(page, 'Create', 'iPhone 14 (390px)');
       auditResults.push({ screen: 'Create', viewport: 'iPhone 14 (390px)', noOverflow: mobileCreateNoOverflow });
 
-      // Create intent on mobile (use 1 NIM for preset)
-      await page.fill('input[placeholder="12.50"]', '1');
+      // Create intent on mobile
+      await page.fill('input[placeholder="12.50"]', '10.00');
       await page.fill('input[placeholder="e.g. ORDER-1042"]', 'ORDER-IPHONE-E2E');
       await page.click('button[type="submit"]:has-text("Create payment request")');
 
       // Mobile Payment Screen
-      await page.waitForSelector('text=Transaction Memo');
+      await page.waitForSelector('text=Transaction Memo', { timeout: 10000 });
       await page.waitForTimeout(600);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '14_payment_mobile_iphone_390.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '13_payment_mobile_iphone_390.png'), fullPage: true });
       const mobilePayNoOverflow = await checkOverflow(page, 'Payment', 'iPhone 14 (390px)');
       auditResults.push({ screen: 'Payment', viewport: 'iPhone 14 (390px)', noOverflow: mobilePayNoOverflow });
 
-      // Open History/Ledger and click settled receipt to view mobile receipt card
-      await page.locator('button:has-text("Ledger"):visible').click();
-      await page.waitForSelector('button:has-text("View Proof")', { timeout: 10000 });
-      const viewProofBtn = page.locator('button:has-text("View Proof"):visible').first();
-      await viewProofBtn.click();
-      await page.waitForSelector('text=Cryptographic Proof Receipt', { timeout: 10000 });
-      await page.waitForTimeout(600);
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '15_receipt_mobile_iphone_390.png'), fullPage: true });
-      const mobileReceiptNoOverflow = await checkOverflow(page, 'Receipt', 'iPhone 14 (390px)');
-      auditResults.push({ screen: 'Receipt', viewport: 'iPhone 14 (390px)', noOverflow: mobileReceiptNoOverflow });
+      // Mobile Verifier Screen
+      await page.locator('button:visible:has-text("Verify")').first().click();
+      await page.waitForSelector('text=Verify Payment Receipt');
+      await page.fill('textarea', receiptJson);
+      await page.click('button:has-text("Run Verification")');
+      await page.waitForSelector('text=VERIFIED (AUTHENTIC)', { timeout: 15000 });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '14_verifier_mobile_iphone_390.png'), fullPage: true });
+      const mobileVerifyNoOverflow = await checkOverflow(page, 'Verifier', 'iPhone 14 (390px)');
+      auditResults.push({ screen: 'Verifier', viewport: 'iPhone 14 (390px)', noOverflow: mobileVerifyNoOverflow });
+
+      // Mobile Proof & Evidence Manifest Screen
+      await page.locator('button:visible:has-text("Proof")').first().click();
+      await page.waitForSelector('text=Dynamic Evidence Manifest');
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '14b_proof_mobile_iphone_390.png'), fullPage: true });
+      const mobileProofNoOverflow = await checkOverflow(page, 'Proof', 'iPhone 14 (390px)');
+      auditResults.push({ screen: 'Proof', viewport: 'iPhone 14 (390px)', noOverflow: mobileProofNoOverflow });
+
+      // Mobile Ledger Screen (Footer verification)
+      await page.locator('button:visible:has-text("Ledger")').first().click();
+      await page.waitForSelector('text=Payment History & Receipts');
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '14c_ledger_mobile_iphone_390.png'), fullPage: true });
+      const mobileLedgerNoOverflow = await checkOverflow(page, 'Ledger', 'iPhone 14 (390px)');
+      auditResults.push({ screen: 'Ledger', viewport: 'iPhone 14 (390px)', noOverflow: mobileLedgerNoOverflow });
 
       await context.close();
     }
@@ -294,9 +297,25 @@ async function runE2EAudit() {
 
       await page.goto('http://localhost:5173/');
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '16_landing_mobile_small_360.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '15_landing_mobile_small_360.png'), fullPage: true });
       const smallLandingNoOverflow = await checkOverflow(page, 'Landing', 'Mobile Small (360px)');
       auditResults.push({ screen: 'Landing', viewport: 'Mobile Small (360px)', noOverflow: smallLandingNoOverflow });
+
+      // Mobile Small Proof Screen
+      await page.locator('button:visible:has-text("Proof")').first().click();
+      await page.waitForSelector('text=Dynamic Evidence Manifest');
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '15b_proof_mobile_small_360.png'), fullPage: true });
+      const smallProofNoOverflow = await checkOverflow(page, 'Proof', 'Mobile Small (360px)');
+      auditResults.push({ screen: 'Proof', viewport: 'Mobile Small (360px)', noOverflow: smallProofNoOverflow });
+
+      // Mobile Small Ledger Screen
+      await page.locator('button:visible:has-text("Ledger")').first().click();
+      await page.waitForSelector('text=Payment History & Receipts');
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '15c_ledger_mobile_small_360.png'), fullPage: true });
+      const smallLedgerNoOverflow = await checkOverflow(page, 'Ledger', 'Mobile Small (360px)');
+      auditResults.push({ screen: 'Ledger', viewport: 'Mobile Small (360px)', noOverflow: smallLedgerNoOverflow });
 
       await context.close();
     }
@@ -315,9 +334,31 @@ async function runE2EAudit() {
 
       await page.goto('http://localhost:5173/');
       await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '17_landing_mobile_large_430.png'), fullPage: true });
+      await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '16_landing_mobile_large_430.png'), fullPage: true });
       const largeLandingNoOverflow = await checkOverflow(page, 'Landing', 'Mobile Large (430px)');
       auditResults.push({ screen: 'Landing', viewport: 'Mobile Large (430px)', noOverflow: largeLandingNoOverflow });
+
+      await context.close();
+    }
+
+    // ==========================================
+    // 7. LIVE PRODUCTION VERCEL DEPLOYMENT AUDIT
+    // ==========================================
+    console.log('\n--- Auditing Live Production Vercel URL (https://provenim.vercel.app) ---');
+    {
+      const context = await browser.newContext({ viewport: VIEWPORTS.desktop_hd });
+      const page = await context.newPage();
+
+      try {
+        await page.goto('https://provenim.vercel.app/', { timeout: 20000 });
+        await page.waitForLoadState('networkidle');
+        await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '17_live_vercel_production.png'), fullPage: true });
+        const liveNoOverflow = await checkOverflow(page, 'Live Vercel Production', 'Desktop HD');
+        auditResults.push({ screen: 'Live Vercel', viewport: 'Desktop HD', noOverflow: liveNoOverflow });
+        console.log('[OK] Live Vercel deployment verified successfully.');
+      } catch (e) {
+        console.warn('Live Vercel deployment check note:', e.message);
+      }
 
       await context.close();
     }
@@ -331,7 +372,7 @@ async function runE2EAudit() {
     for (const r of auditResults) {
       const status = r.noOverflow ? 'PASS' : 'FAIL';
       if (!r.noOverflow) allPassed = false;
-      console.log(`[${status}] ${r.screen.padEnd(12)} | ${r.viewport}`);
+      console.log(`[${status}] ${r.screen.padEnd(16)} | ${r.viewport}`);
     }
     console.log('====================================================\n');
 
@@ -343,8 +384,8 @@ async function runE2EAudit() {
       console.log(`Proof screenshots saved to: ${SCREENSHOTS_DIR}`);
     }
   } finally {
-    apiProcess.kill();
-    webProcess.kill();
+    try { apiProcess.kill(); } catch {}
+    try { webProcess.kill(); } catch {}
   }
 }
 

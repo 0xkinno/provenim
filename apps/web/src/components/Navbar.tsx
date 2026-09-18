@@ -1,5 +1,16 @@
-import React from 'react';
-import { ShieldCheck, Layers, FileCheck, History, PlusCircle, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  ShieldCheck,
+  PlusCircle,
+  FileCheck,
+  Layers,
+  History,
+  CheckCircle2,
+  Wallet,
+  Copy,
+  Check,
+  Loader2
+} from 'lucide-react';
 import { type UseNimiqReturn } from '../hooks/useNimiq';
 
 interface NavbarProps {
@@ -15,21 +26,35 @@ export const Navbar: React.FC<NavbarProps> = ({
   nimiq,
   blockHeight
 }) => {
+  const [copiedAddr, setCopiedAddr] = useState(false);
+
+  const handleCopyAccount = (addr: string) => {
+    navigator.clipboard.writeText(addr);
+    setCopiedAddr(true);
+    setTimeout(() => setCopiedAddr(false), 2000);
+  };
+
+  const shortAddr = (addr: string) => {
+    const clean = addr.replace(/\s+/g, '');
+    return `${clean.slice(0, 4)}...${clean.slice(-4)}`;
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-parchment-100/90 backdrop-blur-md border-b border-parchment-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand */}
-        <div 
-          onClick={() => setCurrentTab('landing')}
+        
+        {/* Brand Logo & Editorial Title */}
+        <div
           className="flex items-center gap-3 cursor-pointer group"
+          onClick={() => setCurrentTab('landing')}
         >
-          <div className="w-8 h-8 rounded-full bg-forest-800 flex items-center justify-center text-parchment-50 shadow-sm transition-transform group-hover:scale-105">
+          <div className="w-9 h-9 rounded-xl bg-forest-800 flex items-center justify-center text-parchment-50 shadow-md group-hover:bg-forest-900 transition-colors">
             <ShieldCheck className="w-5 h-5 text-gold-light" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-serif text-xl font-bold tracking-tight text-ink-900">Provenim</span>
-              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-forest-800/10 text-forest-800 font-semibold">PoS</span>
+              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-forest-800/10 text-forest-800 font-semibold">PoS Testnet</span>
             </div>
             <span className="text-[11px] font-mono text-ink-500 block -mt-0.5">Deterministic Proof of NIM</span>
           </div>
@@ -56,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            New Request
+            New Order
           </button>
           <button
             onClick={() => setCurrentTab('verify')}
@@ -98,19 +123,40 @@ export const Navbar: React.FC<NavbarProps> = ({
           {blockHeight ? (
             <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-ink-600 bg-parchment-50 px-2.5 py-1 rounded-full border border-parchment-200">
               <span className="w-2 h-2 rounded-full bg-forest-600 animate-pulse"></span>
-              <span>Block #{blockHeight.toLocaleString()}</span>
+              <span>Testnet #{blockHeight.toLocaleString()}</span>
             </div>
           ) : null}
 
-          {nimiq.isNimiqPay ? (
-            <div className="flex items-center gap-1.5 bg-forest-800 text-parchment-50 px-3 py-1.5 rounded-full text-xs font-mono font-medium shadow-sm">
+          {nimiq.selectedAccount ? (
+            <div className="flex items-center gap-2 bg-forest-800 text-parchment-50 px-3 py-1.5 rounded-full text-xs font-mono font-medium shadow-sm">
               <CheckCircle2 className="w-3.5 h-3.5 text-gold-light" />
-              <span>Nimiq Pay Connected</span>
+              <span>{shortAddr(nimiq.selectedAccount)}</span>
+              <button
+                type="button"
+                onClick={() => handleCopyAccount(nimiq.selectedAccount!)}
+                title="Copy Connected Address"
+                className="hover:text-gold-light transition-colors"
+              >
+                {copiedAddr ? <Check className="w-3 h-3 text-gold-light" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
+          ) : nimiq.walletState === 'provider_detected' ? (
+            <button
+              onClick={() => nimiq.connectWallet()}
+              className="flex items-center gap-1.5 bg-forest-800 hover:bg-forest-900 text-parchment-50 px-3.5 py-1.5 rounded-full text-xs font-mono font-medium shadow-sm transition-all"
+            >
+              <Wallet className="w-3.5 h-3.5 text-gold-light" />
+              <span>Connect Nimiq Wallet</span>
+            </button>
+          ) : nimiq.walletState === 'requesting_permission' ? (
+            <div className="flex items-center gap-1.5 bg-parchment-200 text-ink-700 px-3 py-1.5 rounded-full text-xs font-mono">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-forest-700" />
+              <span>Requesting Wallet...</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 bg-parchment-200/80 text-ink-700 px-3 py-1.5 rounded-full text-xs font-mono border border-parchment-300">
-              <span className="w-2 h-2 rounded-full bg-gold"></span>
-              <span>Live Node: rpc.nimiqwatch.com</span>
+              <span className="w-2 h-2 rounded-full bg-forest-600"></span>
+              <span>Testnet Node: rpc.testnet.nimiqwatch.com</span>
             </div>
           )}
         </div>
@@ -132,7 +178,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             currentTab === 'create' ? 'bg-forest-800 text-parchment-50 font-bold' : 'text-ink-600'
           }`}
         >
-          + Request
+          + Order
         </button>
         <button
           onClick={() => setCurrentTab('verify')}

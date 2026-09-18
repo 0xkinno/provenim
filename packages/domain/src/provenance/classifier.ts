@@ -20,6 +20,8 @@ export interface RawTransactionInput {
   networkId: number;
   blockNumber?: number;
   timestamp?: number;
+  confirmations?: number;
+  network?: string;
 }
 
 /**

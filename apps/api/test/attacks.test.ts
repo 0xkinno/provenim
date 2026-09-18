@@ -2,12 +2,28 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { initDatabase, db } from '../src/db.js';
 import { PaymentService } from '../src/service.js';
 import { verifyReceiptIndependently } from '@provenim/verifier';
-import { evaluatePaymentInvariants, createPaymentIntent } from '@provenim/domain';
+import { evaluatePaymentInvariants, createPaymentIntent, generatePaymentMemo } from '@provenim/domain';
 
-describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
+describe('Attack Campaign (A-01 to A-12: Deterministic Invariant Enforcement)', () => {
   const service = new PaymentService();
   const sampleTxHash = '55aa49633c4a362699ef06c741e62c41581f34db761886ba0303dd29c6704379';
-  const merchantAddr = 'NQ26 0000 0000 02A5 YAK7 4QNF 9MH0 TE2B GVRU';
+  const merchantAddr = 'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V';
+
+  const makeTx = (intentId: string, memo: string, overrides = {}) => ({
+    hash: sampleTxHash,
+    from: 'NQ81 C01N BASE 0000 0000 0000 0000 0000 0000',
+    fromType: 0,
+    to: merchantAddr,
+    toType: 0,
+    value: 1801422,
+    executionResult: true,
+    networkId: 5,
+    network: 'TestAlbatross',
+    blockNumber: 11752000,
+    confirmations: 10,
+    recipientData: memo,
+    ...overrides
+  });
 
   beforeAll(() => {
     initDatabase();
@@ -17,63 +33,97 @@ describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
     db.exec('DELETE FROM settlements; DELETE FROM receipts; DELETE FROM payment_observations; DELETE FROM payment_intents; DELETE FROM verification_attempts;');
   });
 
-  it('A-01: Fake Client Success - client claim without chain evidence is ignored', () => {
+  // A-01: Exact Memo Mismatch / Missing Memo (P2)
+  it('A-01: Exact Memo Mismatch - transaction without or with mismatched PRV2 memo fails P2', async () => {
     const { intent } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-ATTACK-01',
-      network: 'mainnet'
+      network: 'testnet'
     });
 
-    // An adversarial frontend attempts to claim paid without blockchain transaction
-    const fetched = service.getIntent(intent.intentId);
-    expect(fetched?.intent.status).toBe('OPEN');
-    expect(fetched?.receipt).toBeNull();
-    expect(fetched?.settlement).toBeNull();
-  });
+    // Transaction with wrong intent memo
+    const wrongMemoTx = makeTx(intent.intentId, 'PRV2:int_attacker_fake:99999999');
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, wrongMemoTx);
 
-  it('A-02: Wrong Amount - real tx with mismatched Luna fails Invariant P3', async () => {
-    const { intent } = service.createIntent({
-      amountLuna: '1000000', // 10 NIM requested, but tx only transfers 18.01422 NIM
-      merchantAddress: merchantAddr,
-      orderReference: 'ORDER-ATTACK-02',
-      network: 'mainnet'
-    });
-
-    const result = await service.observeAndVerify(intent.intentId, sampleTxHash);
-    expect(result.verdict).toBe('REJECTED');
-    expect(result.invariants.P3.status).toBe('FAIL');
-    expect(result.receipt).toBeUndefined();
-  });
-
-  it('A-03: Wrong Recipient - tx paying another merchant fails Invariant P2', async () => {
-    const wrongMerchant = 'NQ99 9999 9999 9999 9999 9999 9999 9999 9999';
-    const { intent } = service.createIntent({
-      amountLuna: '1801422',
-      merchantAddress: wrongMerchant,
-      orderReference: 'ORDER-ATTACK-03',
-      network: 'mainnet'
-    });
-
-    const result = await service.observeAndVerify(intent.intentId, sampleTxHash);
     expect(result.verdict).toBe('REJECTED');
     expect(result.invariants.P2.status).toBe('FAIL');
     expect(result.receipt).toBeUndefined();
   });
 
-  it('A-04: Receipt Tampering - altered JSON fails canonical SHA-256 digest', async () => {
-    const { intent } = service.createIntent({
+  // A-02: Underpayment in Luna (P4)
+  it('A-02: Underpayment - transaction paying less Luna fails Invariant P4', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-ATTACK-02',
+      network: 'testnet'
+    });
+
+    const underpaidTx = makeTx(intent.intentId, memo, { value: 1801421 }); // 1 Luna less
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, underpaidTx);
+
+    expect(result.verdict).toBe('REJECTED');
+    expect(result.invariants.P4.status).toBe('FAIL');
+    expect(result.receipt).toBeUndefined();
+  });
+
+  // A-03: Wrong Recipient Redirection (P3)
+  it('A-03: Wrong Recipient - transaction redirecting funds to attacker fails Invariant P3', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-ATTACK-03',
+      network: 'testnet'
+    });
+
+    const wrongRecipientTx = makeTx(intent.intentId, memo, {
+      to: 'NQ99 9999 9999 9999 9999 9999 9999 9999 9999'
+    });
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, wrongRecipientTx);
+
+    expect(result.verdict).toBe('REJECTED');
+    expect(result.invariants.P3.status).toBe('FAIL');
+    expect(result.receipt).toBeUndefined();
+  });
+
+  // A-04: Wrong Network (P5)
+  it('A-04: Wrong Network - mainnet transaction presented to testnet intent fails Invariant P5', async () => {
+    const { intent, memo } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-ATTACK-04',
-      network: 'mainnet'
+      network: 'testnet'
     });
 
-    const result = await service.observeAndVerify(intent.intentId, sampleTxHash);
+    const mainnetTx = makeTx(intent.intentId, memo, {
+      networkId: 24, // Mainnet ID
+      network: 'MainAlbatross'
+    });
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, mainnetTx);
+
+    expect(result.verdict).toBe('REJECTED');
+    expect(result.invariants.P5.status).toBe('FAIL');
+  });
+
+  // A-05: Receipt Tampering (P12)
+  it('A-05: Receipt Tampering - altered JSON fails canonical SHA-256 digest', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-ATTACK-05',
+      network: 'testnet'
+    });
+
+    const pristineTx = makeTx(intent.intentId, memo);
+    const result = await service.observeAndVerify(intent.intentId, sampleTxHash, false, pristineTx);
     expect(result.receipt).toBeDefined();
 
     // Verify pristine receipt passes standalone verifier
-    const pristineCheck = await verifyReceiptIndependently({ receipt: result.receipt! });
+    const pristineCheck = await verifyReceiptIndependently({
+      receipt: result.receipt!,
+      rawTransaction: pristineTx
+    });
     expect(pristineCheck.verdict).toBe('VERIFIED');
     expect(pristineCheck.receiptDigestMatch).toBe(true);
 
@@ -83,41 +133,66 @@ describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
       amountLuna: '999999999'
     };
 
-    const tamperedCheck = await verifyReceiptIndependently({ receipt: tamperedReceipt });
+    const tamperedCheck = await verifyReceiptIndependently({
+      receipt: tamperedReceipt,
+      rawTransaction: pristineTx
+    });
     expect(tamperedCheck.verdict).toBe('REJECTED');
     expect(tamperedCheck.receiptDigestMatch).toBe(false);
     expect(tamperedCheck.failureReason).toContain('digest mismatch');
   });
 
-  it('A-05: Replay Attack - reusing tx hash for second intent is rejected', async () => {
-    const { intent: intent1 } = service.createIntent({
+  // A-06: Replayed Transaction Hash (P10)
+  it('A-06: Replay Attack - reusing tx hash for a second intent is rejected', async () => {
+    const { intent: intent1, memo: memo1 } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-ORIGINAL',
-      network: 'mainnet'
+      network: 'testnet'
     });
-    const res1 = await service.observeAndVerify(intent1.intentId, sampleTxHash);
+    const tx1 = makeTx(intent1.intentId, memo1);
+    const res1 = await service.observeAndVerify(intent1.intentId, sampleTxHash, false, tx1);
     expect(res1.verdict).toBe('VERIFIED');
 
-    const { intent: intent2 } = service.createIntent({
+    const { intent: intent2, memo: memo2 } = service.createIntent({
       amountLuna: '1801422',
       merchantAddress: merchantAddr,
       orderReference: 'ORDER-REPLAY',
-      network: 'mainnet'
+      network: 'testnet'
     });
-    const res2 = await service.observeAndVerify(intent2.intentId, sampleTxHash);
+    const tx2 = makeTx(intent2.intentId, memo2);
+    const res2 = await service.observeAndVerify(intent2.intentId, sampleTxHash, false, tx2);
     expect(res2.verdict).toBe('REJECTED');
-    expect(res2.invariants.P9.status).toBe('FAIL');
+    expect(res2.invariants.P10.status).toBe('FAIL');
   });
 
-  it('A-06: Expired Intent - settlement after expiration window is rejected', () => {
+  // A-07: Duplicate Intent Settlement (P11)
+  it('A-07: Duplicate Intent Settlement - settling already sealed intent is idempotent or rejected', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-DUP-SETTLE',
+      network: 'testnet'
+    });
+    const tx = makeTx(intent.intentId, memo);
+    const res1 = await service.observeAndVerify(intent.intentId, sampleTxHash, false, tx);
+    expect(res1.verdict).toBe('VERIFIED');
+
+    // Attempt second observation of already sealed intent
+    const res2 = await service.observeAndVerify(intent.intentId, sampleTxHash, false, tx);
+    expect(res2.verdict).toBe('VERIFIED');
+    expect(res2.receipt?.receiptId).toBe(res1.receipt?.receiptId);
+  });
+
+  // A-08: Expired Intent Window (P1)
+  it('A-08: Expired Intent - settlement after expiration window fails Invariant P1', () => {
     const expiredIntent = createPaymentIntent({
       intentId: 'int_expired_test',
       merchantAddress: merchantAddr,
       amountLuna: '1801422',
-      network: 'mainnet',
+      network: 'testnet',
       orderReference: 'ORDER-EXPIRED',
-      expiresAt: 1000 // In the far past
+      expiresAt: 1000 // In the past
     });
 
     const mockTx = {
@@ -128,9 +203,10 @@ describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
       toType: 0,
       value: 1801422,
       executionResult: true,
-      networkId: 24,
-      blockNumber: 61861200,
-      timestamp: 2000 // block timestamp > expiresAt
+      networkId: 5,
+      blockNumber: 11752000,
+      timestamp: 2000, // block timestamp > expiresAt
+      recipientData: expiredIntent.paymentMemo
     };
 
     const res = evaluatePaymentInvariants({
@@ -144,14 +220,88 @@ describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
     expect(res.failedInvariants).toContain('P1');
   });
 
-  it('A-07: Non-Final Transaction - unconfirmed tx held in PENDING state', () => {
+  // A-09: Ambiguous Provenance / Failed Execution (P6 & P14)
+  it('A-09: Failed Execution - failed blockchain execution fails closed', () => {
+    const intent = createPaymentIntent({
+      intentId: 'int_provenance_fail',
+      merchantAddress: merchantAddr,
+      amountLuna: '1801422',
+      network: 'testnet',
+      orderReference: 'ORDER-FAIL-PROV'
+    });
+
+    const failedTx = {
+      hash: sampleTxHash,
+      from: 'NQ81 C01N BASE 0000 0000 0000 0000 0000 0000',
+      fromType: 0,
+      to: merchantAddr,
+      toType: 0,
+      value: 1801422,
+      executionResult: false, // Execution reverted/failed
+      networkId: 5,
+      blockNumber: 11752000,
+      recipientData: intent.paymentMemo
+    };
+
+    const res = evaluatePaymentInvariants({
+      intent,
+      transaction: failedTx,
+      confirmations: 10
+    });
+
+    expect(res.allPassed).toBe(false);
+    expect(res.verdict).toBe('REJECTED');
+    expect(res.failedInvariants).toContain('P6');
+    expect(res.failedInvariants).toContain('P14');
+  });
+
+  // A-10: RPC Unavailability Fail-Closed
+  it('A-10: RPC Failure Resiliency - missing or errored query fails closed without corrupting DB', async () => {
+    const { intent } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-RPC-ERROR',
+      network: 'testnet'
+    });
+
+    // Query non-existent hash from RPC (triggers fail closed)
+    const result = await service.observeAndVerify(intent.intentId, '0000000000000000000000000000000000000000000000000000000000000000');
+    expect(result.verdict).toBe('REJECTED');
+    expect(result.failureReason).toContain('Could not retrieve transaction');
+
+    const current = service.getIntent(intent.intentId);
+    expect(current?.intent.status).toBe('OPEN');
+  });
+
+  // A-11: Browser Death / Interrupted Session Recovery
+  it('A-11: Interrupted Session Recovery - payment observed post-reconnect settles seamlessly', async () => {
+    const { intent, memo } = service.createIntent({
+      amountLuna: '1801422',
+      merchantAddress: merchantAddr,
+      orderReference: 'ORDER-RECONNECT',
+      network: 'testnet'
+    });
+
+    // Client drops connection, reconnects and submits txHash
+    const tx = makeTx(intent.intentId, memo);
+    const recovered = await service.observeAndVerify(intent.intentId, sampleTxHash, false, tx);
+    expect(recovered.verdict).toBe('VERIFIED');
+    expect(recovered.receipt).toBeDefined();
+
+    const stored = service.getIntent(intent.intentId);
+    expect(stored?.intent.status).toBe('SEALED');
+  });
+
+  // A-12: Non-Final Transaction (P8)
+  it('A-12: Non-Final Transaction - unconfirmed tx held in PENDING state (P8)', () => {
     const intent = createPaymentIntent({
       intentId: 'int_pending_test',
       merchantAddress: merchantAddr,
       amountLuna: '1801422',
-      network: 'mainnet',
+      network: 'testnet',
       orderReference: 'ORDER-PENDING'
     });
+    const memo = generatePaymentMemo(intent.intentId, intent.intentDigest);
 
     const mockTx = {
       hash: sampleTxHash,
@@ -161,87 +311,20 @@ describe('Attack Campaign (ATTACKS.md - A-01 to A-10)', () => {
       toType: 0,
       value: 1801422,
       executionResult: true,
-      networkId: 24,
-      blockNumber: 61861200
+      networkId: 5,
+      blockNumber: 11752000,
+      recipientData: memo
     };
 
     const res = evaluatePaymentInvariants({
       intent,
       transaction: mockTx,
-      confirmations: 0,
+      confirmations: 0, // 0 confirmations
       finalityThreshold: 1
     });
 
     expect(res.allPassed).toBe(false);
     expect(res.verdict).toBe('PENDING');
-    expect(res.invariants.P7.status).toBe('PENDING');
-  });
-
-  it('A-08: Browser Death Recovery - reconciler recovers confirmed tx', async () => {
-    const { intent } = service.createIntent({
-      amountLuna: '1801422',
-      merchantAddress: merchantAddr,
-      orderReference: 'ORDER-CRASH-RECOVERY',
-      network: 'mainnet'
-    });
-
-    // Reconciler background processing recovers the payment
-    const recoveredResult = await service.observeAndVerify(intent.intentId, sampleTxHash);
-    expect(recoveredResult.verdict).toBe('VERIFIED');
-    expect(recoveredResult.receipt).toBeDefined();
-
-    const current = service.getIntent(intent.intentId);
-    expect(current?.intent.status).toBe('SEALED');
-  });
-
-  it('A-09: RPC Failure Resiliency - graceful error handling without state corruption', async () => {
-    const { intent } = service.createIntent({
-      amountLuna: '1801422',
-      merchantAddress: merchantAddr,
-      orderReference: 'ORDER-RPC-ERROR',
-      network: 'mainnet'
-    });
-
-    // Query non-existent hash (triggers not found / error handling)
-    const result = await service.observeAndVerify(intent.intentId, '0000000000000000000000000000000000000000000000000000000000000000');
-    expect(result.verdict).toBe('REJECTED');
-    expect(result.failureReason).toContain('Could not retrieve');
-    
-    // DB state remains intact and still OPEN for future retry
-    const current = service.getIntent(intent.intentId);
-    expect(current?.intent.status).toBe('OPEN');
-  });
-
-  it('A-10: Incomplete Provenance - failed execution fails closed (P5 & P13)', () => {
-    const intent = createPaymentIntent({
-      intentId: 'int_provenance_fail',
-      merchantAddress: merchantAddr,
-      amountLuna: '1801422',
-      network: 'mainnet',
-      orderReference: 'ORDER-FAIL-PROV'
-    });
-
-    const failedExecutionTx = {
-      hash: sampleTxHash,
-      from: 'NQ81 C01N BASE 0000 0000 0000 0000 0000 0000',
-      fromType: 0,
-      to: merchantAddr,
-      toType: 0,
-      value: 1801422,
-      executionResult: false, // Failed execution
-      networkId: 24,
-      blockNumber: 61861200
-    };
-
-    const res = evaluatePaymentInvariants({
-      intent,
-      transaction: failedExecutionTx,
-      confirmations: 10
-    });
-
-    expect(res.allPassed).toBe(false);
-    expect(res.verdict).toBe('REJECTED');
-    expect(res.failedInvariants).toContain('P5');
-    expect(res.failedInvariants).toContain('P6');
+    expect(res.invariants.P8.status).toBe('PENDING');
   });
 });

@@ -20,19 +20,21 @@ export async function registerRoutes(app: FastifyInstance) {
     return {
       status: 'ok',
       service: 'Provenim API',
-      network: process.env.NIMIQ_NETWORK || 'mainnet',
+      network: process.env.NIMIQ_NETWORK || 'testnet',
+      networkId: process.env.NIMIQ_NETWORK_ID ? parseInt(process.env.NIMIQ_NETWORK_ID, 10) : 5,
+      merchantAddress: process.env.MERCHANT_ADDRESS || 'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V',
       blockHeight,
       rpcOk,
       timestamp: new Date().toISOString()
     };
   });
 
-  // Create Intent
+  // Create Intent (Server strictly owns merchant settlement destination)
   app.post('/api/intents', async (req, reply) => {
     const BodySchema = z.object({
       amountNim: z.string().optional(),
       amountLuna: z.string().optional(),
-      merchantAddress: z.string().min(10),
+      merchantAddress: z.string().optional(),
       orderReference: z.string().min(1),
       merchantId: z.string().optional(),
       network: z.enum(['mainnet', 'testnet']).optional(),
@@ -52,12 +54,22 @@ export async function registerRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Either amountNim or amountLuna is required' });
     }
 
+    const merchantAddress =
+      process.env.MERCHANT_ADDRESS ||
+      parsed.data.merchantAddress ||
+      'NQ37 KE7T S7T2 JQTK QDC6 PAFB RQ7Q 9GEV LK0V';
+
+    const network =
+      parsed.data.network ||
+      (process.env.NIMIQ_NETWORK as any) ||
+      'testnet';
+
     const res = paymentService.createIntent({
       amountLuna,
-      merchantAddress: parsed.data.merchantAddress,
+      merchantAddress,
       orderReference: parsed.data.orderReference,
       merchantId: parsed.data.merchantId,
-      network: parsed.data.network,
+      network,
       expiresInSeconds: parsed.data.expiresInSeconds
     });
 
@@ -78,7 +90,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post('/api/intents/:id/observe', async (req, reply) => {
     const { id } = req.params as { id: string };
     const BodySchema = z.object({
-      txHash: z.string().min(10)
+      txHash: z.string().min(10),
+      allowLegacyBypass: z.boolean().optional()
     });
 
     const parsed = BodySchema.safeParse(req.body);
@@ -87,7 +100,7 @@ export async function registerRoutes(app: FastifyInstance) {
     }
 
     try {
-      const result = await paymentService.observeAndVerify(id, parsed.data.txHash);
+      const result = await paymentService.observeAndVerify(id, parsed.data.txHash, parsed.data.allowLegacyBypass);
       return result;
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -102,15 +115,14 @@ export async function registerRoutes(app: FastifyInstance) {
       return intentData.receipt;
     }
 
-    // Search by receipt_id
-    const row = paymentService.getIntent(id); // fallback
     return reply.status(404).send({ error: 'Receipt not found' });
   });
 
   // Standalone Receipt Verifier Endpoint
   app.post('/api/verify', async (req, reply) => {
     const BodySchema = z.object({
-      receipt: z.any()
+      receipt: z.any(),
+      rpcUrl: z.string().optional()
     });
 
     const parsed = BodySchema.safeParse(req.body);
@@ -119,7 +131,8 @@ export async function registerRoutes(app: FastifyInstance) {
     }
 
     const verdict = await verifyReceiptIndependently({
-      receipt: parsed.data.receipt
+      receipt: parsed.data.receipt,
+      rpcUrl: parsed.data.rpcUrl
     });
 
     return verdict;

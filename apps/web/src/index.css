@@ -31,6 +31,22 @@
   box-shadow: 0 12px 36px -4px rgba(20, 23, 19, 0.08), 0 2px 6px rgba(20, 23, 19, 0.04);
 }
 
+.card-hover-glow {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-hover-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -4px rgba(13, 56, 42, 0.12), 0 4px 12px -2px rgba(13, 56, 42, 0.06);
+  border-color: rgba(22, 91, 67, 0.35);
+}
+
+.magazine-texture {
+  background-color: #FDFBF7;
+  background-image: radial-gradient(rgba(20, 23, 19, 0.02) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
 .perforated-edge {
   background-image: radial-gradient(#F6F3EC 40%, transparent 40%);
   background-size: 16px 16px;

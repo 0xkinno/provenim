@@ -1,13 +1,13 @@
 # Provenim
 
-> **Before a merchant fulfils an order, Provenim proves the NIM payment that is supposed to pay for it.**
->
-> Nimiq Pay Mini App · Deterministic payment verification · Independent receipts
-
 [![Nimiq Pay](https://img.shields.io/badge/Nimiq%20Pay-native-0D382A?style=flat-square)](https://www.nimiq.dev/mini-apps)
 [![Open Source](https://img.shields.io/badge/license-MIT-1A1915?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Proof](https://img.shields.io/badge/verification-deterministic-C5A880?style=flat-square)](PROOF.md)
+
+> **Before a merchant fulfils an order, Provenim proves the NIM payment that is supposed to pay for it.**
+>
+> Nimiq Pay Mini App · Deterministic payment verification · Independent receipts
 
 <img src="docs/screenshots/01_landing_overview.png" alt="Provenim — Deterministic Proof of NIM Merchant Settlement" width="100%" />
 
@@ -93,10 +93,10 @@ The repository's `DISCOVERY.md` documents the protocol investigation and the raw
 
 ## Product Screenshots
 
-| Overview & Protocol Findings | Payment Request & Dual QR |
+| 1. New Payment Request (POS) | 2. Payment Request & Dual QR |
 | :---: | :---: |
-| <img src="docs/screenshots/01_landing_overview.png" alt="Provenim Landing Overview" width="100%" /> | <img src="docs/screenshots/02_payment_request.png" alt="Payment Request & Dual QR" width="100%" /> |
-| **Independent Receipt Verifier** | **Dynamic Evidence Manifest** |
+| <img src="docs/screenshots/01_create_order.png" alt="New Payment Request & Intent Generation" width="100%" /> | <img src="docs/screenshots/02_payment_request.png" alt="Payment Request & Dual QR" width="100%" /> |
+| **3. Independent Receipt Verifier** | **4. Dynamic Evidence Manifest** |
 | <img src="docs/screenshots/03_receipt_verifier.png" alt="Deterministic Receipt Verifier" width="100%" /> | <img src="docs/screenshots/04_proof_registry.png" alt="Dynamic Evidence Manifest" width="100%" /> |
 
 ---

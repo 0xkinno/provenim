@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "data": {
+      "address": "NQ26 0000 0000 02A5 YAK7 4QNF 9MH0 TE2B GVRU",
+      "balance": 11887920722,
+      "type": "basic"
+    },
+    "metadata": {
+      "blockNumber": 61870003,
+      "blockHash": "e433a4ee723d66cccc1f7883f0f05ed2b9b6ef27440d58ce2ae487c54cad3e6c"
+    }
+  },
+  "id": 1789674654822
+}

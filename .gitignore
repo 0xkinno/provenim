@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+dist/
+build/
+.turbo/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.secrets.*
+
+# Research and temporary
+research/competitors/
+research/raw/
+
+# Logs and coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+.nyc_output/
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal

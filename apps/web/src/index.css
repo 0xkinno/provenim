@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #F6F3EC;
+    color: #141713;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, .font-serif {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'IBM Plex Mono', Menlo, Consolas, monospace;
+  }
+}
+
+/* Luxury Paper & Security Receipt Accents */
+.paper-card {
+  background-color: #FBF9F4;
+  border: 1px solid #EEEAE0;
+  box-shadow: 0 4px 20px -2px rgba(20, 23, 19, 0.05), 0 1px 3px rgba(20, 23, 19, 0.03);
+}
+
+.paper-card-elevated {
+  background-color: #FDFBF7;
+  border: 1px solid #E4DFD3;
+  box-shadow: 0 12px 36px -4px rgba(20, 23, 19, 0.08), 0 2px 6px rgba(20, 23, 19, 0.04);
+}
+
+.perforated-edge {
+  background-image: radial-gradient(#F6F3EC 40%, transparent 40%);
+  background-size: 16px 16px;
+  background-position: -8px -8px;
+}
+
+.security-pattern {
+  background-image: repeating-linear-gradient(45deg, rgba(13, 56, 42, 0.015) 0px, rgba(13, 56, 42, 0.015) 2px, transparent 2px, transparent 8px);
+}

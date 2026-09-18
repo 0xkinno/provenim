@@ -1,0 +1,33 @@
+{
+  "name": "provenim-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Provenim — Nimiq Payment Provenance & Independent Verification",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=apps/api run dev",
+    "dev:web": "npm --workspace=apps/web run dev",
+    "build": "npm --workspace=packages/shared run build && npm --workspace=packages/domain run build && npm --workspace=packages/verifier run build && npm --workspace=apps/api run build && npm --workspace=apps/web run build",
+    "test": "vitest run",
+    "test:attacks": "vitest run apps/api/test/attacks.test.ts",
+    "test:e2e": "node tests/e2e/ui_audit.js",
+    "verify:receipt": "node packages/verifier/bin/verify-cli.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.50.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  },
+  "keywords": [
+    "nimiq",
+    "nimiq-pay",
+    "provenance",
+    "verification",
+    "payments"
+  ],
+  "author": "Kinnoski / 0xkinno",
+  "license": "MIT"
+}

@@ -351,38 +351,6 @@ On mobile, the artwork moves behind/below the copy and never sits underneath an 
 
 ---
 
-## Mobile-first by design
-
-The primary environment is Nimiq Pay on a phone.
-
-Target and test at:
-
-```text
-360 × 800
-390 × 844
-iPhone-sized viewport
-Android-sized viewport
-430 × 932
-768 × 1024
-1280 × 800
-1440 × 900
-```
-
-Required assertions:
-
-- no horizontal overflow
-- no clipped address or hash fields
-- no blocked primary CTA
-- readable payment state without scrolling to find the result
-- touch targets large enough for one-thumb use
-- clear provider/wallet state
-- graceful wallet rejection
-- graceful RPC failure
-- reduced-motion support
-- no console errors on the happy path
-
----
-
 ## Architecture
 
 ```text
@@ -548,19 +516,6 @@ Do not put API secrets, database credentials, private keys or signing material i
 The backend is a Fastify process with a real-time reconciliation loop, Nimiq PoS RPC connector, and deterministic receipt engine.
 
 Render Blueprint: `render.yaml`
-
-Required backend configuration:
-
-```env
-PORT=<Render supplied port>
-NIMIQ_RPC_URL=https://rpc.testnet.nimiqwatch.com
-NIMIQ_NETWORK=testnet
-NIMIQ_NETWORK_ID=5
-DATABASE_URL=<PostgreSQL connection string>
-SESSION_SECRET=<strong random secret>
-FINALITY_CONFIRMATION_THRESHOLD=1
-APP_ORIGIN=https://provenim.vercel.app
-```
 
 CORS must allow the exact frontend origin (`https://provenim.vercel.app`), not `*` in production.
 

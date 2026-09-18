@@ -25,7 +25,11 @@ export function parsePaymentMemo(memo: string): {
   let text = memo.trim();
   if (/^[0-9a-fA-F]+$/.test(text) && text.length % 2 === 0) {
     try {
-      const decoded = Buffer.from(text, 'hex').toString('utf8');
+      const bytes = new Uint8Array(text.length / 2);
+      for (let i = 0; i < text.length; i += 2) {
+        bytes[i / 2] = parseInt(text.substring(i, i + 2), 16);
+      }
+      const decoded = new TextDecoder().decode(bytes);
       if (decoded.startsWith('PRV2:') || decoded.startsWith('PRV1:')) {
         text = decoded;
       }

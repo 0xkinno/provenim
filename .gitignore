@@ -12,11 +12,16 @@ build/
 
 # Reference and internal task tracking
 reference/
+video/
+*.mp4
 
 # Research, specimen, and temporary
 research/specimen/
 research/test/
 research/raw/
+research/*.md
+research/mexc_frames/
+research/nimqravel_frames/
 
 # Logs and coverage
 npm-debug.log*
